@@ -1,0 +1,18 @@
+# 构建产物
+/dist/
+*.zip
+
+# skill 运行时产物（在被对齐的项目仓库内生成）
+.qiqskills/
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# 临时文件
+*.log
+*.tmp

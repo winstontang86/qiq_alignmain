@@ -27,7 +27,7 @@ version: 0.1.0
 3. **逻辑冲突 ≥ 行冲突**：git 不报冲突 **不等于** 没冲突。两边改了不同位置却互相破坏语义（改签名/删字段/改语义/重构）才是最危险的，必须主动检查并记录。
 4. **行冲突解决的两条硬约束（不可违背）**：解决任何一处行冲突时，结果必须**同时**满足——① **不回滚已有逻辑**（主干带来的 + 分支已有的，二者的有效行为都要保留）；② **完整实现分支本次准备新增/修改的逻辑**。两者无法同时满足时 **停止并交人工确认**，禁止 AI 擅自二选一。
 5. **存疑即停，不擅自发挥**：合流不是重构。禁止借合流之机改命名、删功能、做"顺手优化"；所有取舍必须显式记录并在存疑时交人工。
-6. **可恢复**：所有中间产物落盘到**工作仓库根目录**下的 `.qiqskills/<分支名>/`，支持断点续传与事后追溯。
+6. **可恢复**：所有中间产物落盘到**工作仓库根目录**下的 `.qiqskills/<仓库名>-<分支名>/`，支持断点续传与事后追溯。
 
 ## 渐进披露阅读索引（按需加载）
 
@@ -40,7 +40,7 @@ version: 0.1.0
 | Phase 3/4 merge + 行冲突解决 | `references/03-merge-and-resolve.md` | `templates/CONFLICT_RESOLUTION.md` |
 | Phase 5 合流后整体审查 | `references/04-post-merge-review.md` | `templates/POST_MERGE_REVIEW.md` |
 
-辅助脚本：`scripts/collect_diffs.sh` —— 一把收集「主干侧 diff」「分支侧 diff」「双方共同改动文件」用于 Phase 2 逻辑冲突分析，token 高效。
+辅助脚本：`scripts/collect_diffs.sh origin/<主干>` —— 一把收集主干侧 diff、分支侧 diff、双方共同改动文件、主干侧 rename/delete 概览（merge-base 自动计算），用于 Phase 2 逻辑冲突分析，token 高效。
 
 ## Workflow
 
@@ -65,26 +65,26 @@ Phase 5 ★合流后整体审查：覆盖线上功能? 引入 bug?（STOP & CONF
 按 [@references/01-preflight.md](references/01-preflight.md) §0 执行：
 
 - 确认 **工作分支**：默认 = 当前分支（`git branch --show-current`）；若用户另行指定则切换并复核。
-- 确认 **主干分支**：默认探测 `main`，其次 `master`、`origin/HEAD`；多候选或不确定时向用户确认。
+- 确认 **主干分支**：优先取远端默认分支（`origin/HEAD`），常见为 `main` / `master` / `develop`；多候选或不确定时向用户确认。
 - `git fetch` 拉取主干最新远端状态（不自动 pull 工作分支）。
 - 检查工作区状态、是否处于 rebase/merge 中途、是否 detached HEAD。
-- 在工作仓库根目录建立产物目录 `.qiqskills/<分支名>/`，初始化 `ALIGN_PROGRESS.md`（基于 [@templates/ALIGN_PROGRESS.md](templates/ALIGN_PROGRESS.md)），记录合流前 HEAD（`git rev-parse HEAD`）作为**可回退锚点**。
+- 在工作仓库根目录建立产物目录 `.qiqskills/<仓库名>-<分支名>/`，初始化 `ALIGN_PROGRESS.md`（基于 [@templates/ALIGN_PROGRESS.md](templates/ALIGN_PROGRESS.md)），记录合流前 HEAD（`git rev-parse HEAD`）作为**可回退锚点**。
 
 ### Phase 1 — 暂存未提交改动
 
 按 [@references/01-preflight.md](references/01-preflight.md) §1 执行：
 
 - 若工作区干净 → 记录"无需暂存"，跳过。
-- 若有未提交改动 → 默认用 `git stash push -u -m "qiq-alignmain:<分支名>:<时间戳>"` 暂存（含未跟踪文件）；记录 stash 引用到 `ALIGN_PROGRESS.md`。用户偏好提交则改为新建一个 WIP commit，二选一须明确告知用户。
+- 若有未提交改动 → 默认用 `git stash push -u -m "qiq-alignmain:<仓库名>-<分支名>:<时间戳>"` 暂存（含未跟踪文件）；记录 stash 引用到 `ALIGN_PROGRESS.md`。用户偏好提交则改为新建一个 WIP commit，二选一须明确告知用户。
 - **绝不**用 `git checkout -- .` / `git reset --hard` 等丢弃工作区的方式"清理"。
 
 ### Phase 2 — 合流前逻辑冲突检查（★STOP & CONFIRM）
 
 按 [@references/02-logical-conflict-check.md](references/02-logical-conflict-check.md) 执行，这是本 skill 的核心价值：
 
-1. 用 `scripts/collect_diffs.sh <主干> <merge-base>` 收集**主干侧改动**（merge-base→主干）与**分支侧改动**（merge-base→分支）。
+1. 用 `scripts/collect_diffs.sh origin/<主干>` 收集**主干侧改动**（merge-base→主干）与**分支侧改动**（merge-base→分支）。
 2. 按 reference 中的「7 类语义冲突清单」逐类排查：即使 git 不会在这些位置报行冲突，两边改动是否**逻辑上互相破坏**（如主干改了函数签名/删了字段/改了某配置语义/重构了模块，而分支基于旧形态新增了调用方或逻辑）。
-3. 产出 `.qiqskills/<分支名>/LOGICAL_CONFLICTS.md`（基于 [@templates/LOGICAL_CONFLICTS.md](templates/LOGICAL_CONFLICTS.md)），逐条登记：冲突点、双方改动、风险等级、预案（合流后如何修正）。
+3. 产出 `.qiqskills/<仓库名>-<分支名>/LOGICAL_CONFLICTS.md`（基于 [@templates/LOGICAL_CONFLICTS.md](templates/LOGICAL_CONFLICTS.md)），逐条登记：冲突点、双方改动、风险等级、预案（合流后如何修正）。
 4. **STOP**：把逻辑冲突清单贴给用户确认，高风险项必须达成处理共识后才进入 Phase 3。
 
 ### Phase 3 — merge 主干
@@ -102,7 +102,7 @@ Phase 5 ★合流后整体审查：覆盖线上功能? 引入 bug?（STOP & CONF
 - 读懂 `<<<<<<< HEAD`（分支侧）/ `=======` / `>>>>>>> <主干>`（主干侧）双方意图。
 - 在 **§核心原则 4 的两条硬约束**下给出合并结果：既保留主干带来的有效逻辑、又保留分支已有逻辑、且完整实现分支本次目标。
 - 两条硬约束**无法同时满足**（例如主干删除了分支正要扩展的函数）→ 标记 `NEEDS-HUMAN`，**停下交人工确认**，不擅自取舍。
-- 逐块记录到 `.qiqskills/<分支名>/CONFLICT_RESOLUTION.md`（基于 [@templates/CONFLICT_RESOLUTION.md](templates/CONFLICT_RESOLUTION.md)）：文件、冲突块、分支侧意图、主干侧意图、解决方案、是否满足两条硬约束、是否需人工。
+- 逐块记录到 `.qiqskills/<仓库名>-<分支名>/CONFLICT_RESOLUTION.md`（基于 [@templates/CONFLICT_RESOLUTION.md](templates/CONFLICT_RESOLUTION.md)）：文件、冲突块、分支侧意图、主干侧意图、解决方案、是否满足两条硬约束、是否需人工。
 - 所有冲突解决并通过基本校验后 `git add` 并完成 merge commit；存在 `NEEDS-HUMAN` 未决项则**不提交**，先交人工。
 
 ### Phase 5 — 合流后整体审查（★STOP & CONFIRM）
@@ -112,7 +112,7 @@ Phase 5 ★合流后整体审查：覆盖线上功能? 引入 bug?（STOP & CONF
 - **回归 Phase 2 预案**：逐条核对 `LOGICAL_CONFLICTS.md` 中每个逻辑冲突是否已在合流结果中正确消化（很多语义冲突 git 不报错，必须人工/搜索核对）。
 - **覆盖线上功能检查**：合流结果是否意外覆盖/回退了主干已有（即线上在跑）的功能或修复。
 - **引入 bug 检查**：合流是否引入新的不一致（调用方/被调方签名、字段、错误码、配置、依赖版本不匹配等）；尽量跑构建/测试做客观验证。
-- 产出 `.qiqskills/<分支名>/POST_MERGE_REVIEW.md`（基于 [@templates/POST_MERGE_REVIEW.md](templates/POST_MERGE_REVIEW.md)）。
+- 产出 `.qiqskills/<仓库名>-<分支名>/POST_MERGE_REVIEW.md`（基于 [@templates/POST_MERGE_REVIEW.md](templates/POST_MERGE_REVIEW.md)）。
 - 提示用户：之前 stash 的改动是否需要 `git stash pop` 恢复（恢复后可能再次产生冲突，按 Phase 4 同样规则处理）。
 - **STOP**：把审查结论交用户确认；存在未消化的高风险项不得宣告"对齐完成"。
 
@@ -120,10 +120,10 @@ Phase 5 ★合流后整体审查：覆盖线上功能? 引入 bug?（STOP & CONF
 
 **位置锚点（强制）**：所有读写以**用户工作仓库根目录**（调用 skill 时 shell 的 `pwd`）为基准，且必须是一个 git 仓库根。
 
-所有中间产物固定写入 `.qiqskills/<分支名>/`（`<分支名>` 中的 `/` 替换为 `-`，避免建出多级目录）：
+所有中间产物固定写入 `.qiqskills/<仓库名>-<分支名>/`。命名规则：`<仓库名>` 优先取 git remote 仓库名（无 remote 则取仓库根目录名），`<分支名>` 与 `<仓库名>` 中的 `/` 一律替换为 `-`（避免建出多级目录）。例：仓库 `qiq_alignmain` + 分支 `feature/login` → `.qiqskills/qiq_alignmain-feature-login/`。
 
 ```
-.qiqskills/<分支名>/
+.qiqskills/<仓库名>-<分支名>/
 ├── ALIGN_PROGRESS.md         # 进度面板 + 可回退锚点（合流前 HEAD / stash 引用）
 ├── LOGICAL_CONFLICTS.md      # Phase 2 逻辑冲突检查记录
 ├── CONFLICT_RESOLUTION.md    # Phase 4 行冲突逐块解决记录
@@ -144,12 +144,10 @@ Phase 5 ★合流后整体审查：覆盖线上功能? 引入 bug?（STOP & CONF
 
 ## Pitfalls
 
-- **只信 git 不报冲突就放心** → 语义冲突 git 根本不报；Phase 2/Phase 5 必须主动核对。
-- **stash 后忘记 pop** → Phase 5 必须提示用户处理被暂存的改动。
+- **stash 后忘记 pop** → Phase 5 必须提示用户处理被暂存的改动；pop 可能再次产生冲突。
 - **把 merge 改成 rebase 改写分支历史** → 默认 merge；rebase 需用户明确同意，且仍只动工作分支。
-- **冲突解决时只保留一方** → 多数情况下双方逻辑都要保留，"二选一"是最后手段且要交人工。
 - **跨多分支同时对齐** → 一次会话只对齐一个工作分支；多分支分别启动。
-- **合流后不验证** → 至少跑构建/相关测试，把"引入 bug"从主观判断变成客观结论。
+- **合流后不验证就收尾** → 至少跑构建/相关测试，把"引入 bug"从主观判断变成客观结论。
 
 ## Verification（交付前逐项核对）
 

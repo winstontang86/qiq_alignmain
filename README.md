@@ -66,10 +66,10 @@ qiq-alignmain/
 
 ## 运行时产物
 
-skill 在被对齐的项目仓库内固定使用 `.qiqskills/<分支名>/` 目录存放运行时产物（分支名中的 `/` 替换为 `-`）：
+skill 在被对齐的项目仓库内固定使用 `.qiqskills/<仓库名>-<分支名>/` 目录存放运行时产物（`<仓库名>` 取 git remote 仓库名或仓库根目录名，`<分支名>` 与 `<仓库名>` 中的 `/` 替换为 `-`）：
 
 ```
-.qiqskills/<分支名>/
+.qiqskills/<仓库名>-<分支名>/
 ├── ALIGN_PROGRESS.md         # 进度面板 + 可回退锚点（合流前 HEAD / stash 引用）
 ├── LOGICAL_CONFLICTS.md      # Phase 2 逻辑冲突检查记录
 ├── CONFLICT_RESOLUTION.md    # Phase 4 行冲突逐块解决记录

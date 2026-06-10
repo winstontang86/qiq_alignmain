@@ -80,7 +80,7 @@ git diff <merge-base> origin/<主干> -- <file>
 
 ### 4.5 逐块记录
 
-每个冲突块在 `.qiqskills/<分支名>/CONFLICT_RESOLUTION.md` 登记（基于 template）：文件、冲突块定位、分支侧意图、主干侧意图、采用的解决策略、解决后代码摘要、是否满足约束①、是否满足约束②、是否 `NEEDS-HUMAN`。
+每个冲突块在 `.qiqskills/<仓库名>-<分支名>/CONFLICT_RESOLUTION.md` 登记（基于 template）：文件、冲突块定位、分支侧意图、主干侧意图、采用的解决策略、解决后代码摘要、是否满足约束①、是否满足约束②、是否 `NEEDS-HUMAN`。
 
 ### 4.6 收尾
 

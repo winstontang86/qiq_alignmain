@@ -1,6 +1,6 @@
 ---
 name: qiq-alignmain
-description: 把主干（main/master）的最新修改安全对齐（合流）到当前工作分支的工程化工作流。覆盖确认分支、暂存未提交改动、合流前逻辑冲突检查、merge main、行冲突解决、合流后整体回归审查 6 个阶段。核心能力是检测「git 不报行冲突但逻辑上互相破坏」的语义冲突，并在「不回滚原有逻辑」「能实现分支新增/修改逻辑」两个硬约束下解决行冲突，二者不可兼得时停下交人工确认。触发：把 main 对齐到分支 / 合流主干 / merge main 到当前分支 / align main / 同步主干修改 / 主干合流冲突处理。
+description: 把主干（main/master/develop）的最新修改安全对齐（合流）到当前工作分支。覆盖确认分支、暂存未提交改动、合流前逻辑冲突检查、merge 主干、行冲突解决、合流后整体审查。重点检测 git 不报行冲突但逻辑互相破坏的语义冲突，并在“不回滚已有逻辑”“完整实现分支目标”两条硬约束下解决冲突，不可兼得时停下交人工确认。触发：把 main 对齐到分支 / 合流主干 / merge main 到当前分支 / align main / 同步主干 / 解决主干合流冲突。
 version: 0.1.0
 ---
 
@@ -10,153 +10,141 @@ version: 0.1.0
 
 满足任一条件即启用：
 
-- 用户希望把主干（`main` / `master` / `develop` 等长期分支）上的最新改动**合流到当前正在开发的分支**，让分支跟上主干。
-- 用户提到关键词：**把 main 对齐到分支 / 合流主干 / merge main / align main / 同步主干 / 拉取主干最新代码 / 解决主干合流冲突**。
-- 用户担心合流会引入冲突、回滚已有逻辑、或破坏线上功能，希望有可追溯、可回退、带逻辑冲突检查的合流过程。
+- 用户要把 `main` / `master` / `develop` 等主干最新改动合流到当前开发分支。
+- 用户提到：**把 main 对齐到分支 / 合流主干 / merge main / align main / 同步主干 / 拉取主干最新代码 / 解决主干合流冲突**。
+- 用户希望合流过程可回退、可审计，并能检查 git 不会报告的逻辑冲突。
 
-不适用：
-
-- 只是想新建分支或切分支 → 直接 `git switch`，不需要本 skill。
-- 把分支合回主干 / 提交 MR / 发布上线 → 那是反向流程，本 skill 只负责「主干 → 分支」方向的对齐。
-- 仓库没有可对齐的主干、或当前不在 git 仓库 → 先确认环境。
+不适用：新建/切换分支、把分支合回主干、提交 MR、发布上线、非 git 仓库环境。
 
 ## 核心原则
 
-1. **方向单一**：本 skill 只做 **主干 → 当前工作分支** 的合流对齐，绝不反向把工作分支推回主干。
-2. **可回退优先**：任何破坏性 git 动作（merge / stash pop / reset）前，必须先记录可回退锚点（合流前 HEAD、stash 引用），并写入产物，保证随时能恢复到合流前状态。
-3. **逻辑冲突 ≥ 行冲突**：git 不报冲突 **不等于** 没冲突。两边改了不同位置却互相破坏语义（改签名/删字段/改语义/重构）才是最危险的，必须主动检查并记录。
-4. **行冲突解决的两条硬约束（不可违背）**：解决任何一处行冲突时，结果必须**同时**满足——① **不回滚已有逻辑**（主干带来的 + 分支已有的，二者的有效行为都要保留）；② **完整实现分支本次准备新增/修改的逻辑**。两者无法同时满足时 **停止并交人工确认**，禁止 AI 擅自二选一。
-5. **存疑即停，不擅自发挥**：合流不是重构。禁止借合流之机改命名、删功能、做"顺手优化"；所有取舍必须显式记录并在存疑时交人工。
-6. **全程可审计**：所有冲突（逻辑冲突 / 行冲突 / stash pop 二次冲突）及其解决方法、人工裁决结论必须**逐条落盘且可对账**——git 报告的冲突块数必须等于记录条数，每个 `NEEDS-HUMAN` 都要回填人工最终决定。禁止只在对话里口头解决而不留痕。
-7. **可恢复**：所有中间产物落盘到**工作仓库根目录**下的 `.qiqskills/<仓库名>-<分支名>/`，支持断点续传与事后追溯。
+1. **方向单一**：只做 **主干 → 当前工作分支**，绝不反向污染主干。
+2. **可回退优先**：merge / stash pop / reset 前必须记录合流前 `HEAD`、stash/WIP 等锚点。
+3. **先查逻辑冲突**：git 无行冲突 ≠ 无语义冲突；必须在 merge 前主动检查并落盘。
+4. **冲突解决两条硬约束**：结果必须同时保留主干与分支已有有效逻辑，并完整实现分支本次目标；不可兼得则标记 `NEEDS-HUMAN` 并停下。
+5. **不擅自发挥**：合流不是重构，禁止借机改名、删功能、做未要求优化。
+6. **全程可审计**：逻辑冲突、行冲突、stash pop 二次冲突都要逐条记录；记录条数必须能和 git 冲突块数对账。
 
-## 渐进披露阅读索引（按需加载）
+## 按需加载索引
 
-主入口只放骨架，**细节按 Phase 加载对应 reference**，不要一次性灌进上下文：
+主入口保留流程骨架；执行到对应阶段时再读取 reference/template 的完整细节。
 
-| 阶段 | 必读 reference | 必读 template |
-|---|---|---|
-| Phase 0/1 确认分支 + 暂存 | `references/01-preflight.md` | `templates/ALIGN_PROGRESS.md` |
-| Phase 2 逻辑冲突检查（核心） | `references/02-logical-conflict-check.md` | `templates/LOGICAL_CONFLICTS.md` |
-| Phase 3/4 merge + 行冲突解决 | `references/03-merge-and-resolve.md` | `templates/CONFLICT_RESOLUTION.md` |
-| Phase 5 合流后整体审查 | `references/04-post-merge-review.md` | `templates/POST_MERGE_REVIEW.md` |
+| 阶段 | 目标 | 必读 reference | 必读 template |
+|---|---|---|---|
+| Phase 0/1 | 确认分支、fetch 主干、安全暂存 | `references/01-preflight.md` | `templates/ALIGN_PROGRESS.md` |
+| Phase 2 ★ | 合流前逻辑冲突检查，产出清单并确认 | `references/02-logical-conflict-check.md` | `templates/LOGICAL_CONFLICTS.md` |
+| Phase 3/4 | merge 主干；逐块解决并记录行冲突 | `references/03-merge-and-resolve.md` | `templates/CONFLICT_RESOLUTION.md` |
+| Phase 5 ★ | 合流后审查：覆盖线上功能、引入 bug、stash/WIP 恢复 | `references/04-post-merge-review.md` | `templates/POST_MERGE_REVIEW.md` |
 
-辅助脚本：`scripts/collect_diffs.sh origin/<主干>` —— 一把收集主干侧 diff、分支侧 diff、双方共同改动文件、主干侧 rename/delete 概览（merge-base 自动计算），用于 Phase 2 逻辑冲突分析，token 高效。
+辅助脚本：`scripts/collect_diffs.sh origin/<主干>`，用于 Phase 2 收集主干侧 diff、分支侧 diff、共同改动文件、主干侧 rename/delete 概览。
 
 ## Workflow
 
-整个流程按 6 个阶段顺序执行；**Phase 2 与 Phase 5 是 STOP & CONFIRM 关口**（逻辑冲突结论、合流后回归结论必须给用户确认），其余阶段连续执行并实时更新 `ALIGN_PROGRESS.md`。
-
-```
-Phase 0 确认工作分支 + 主干分支 + 仓库状态 + 建产物目录
-   ↓
-Phase 1 暂存未提交改动（stash/commit），记录可回退锚点
-   ↓
-Phase 2 ★合流前逻辑冲突检查与记录（STOP & CONFIRM）
-   ↓
-Phase 3 merge 主干（捕获 git 行冲突）
-   ↓
-Phase 4 行冲突逐处解决与记录（两条硬约束；冲突交人工）
-   ↓
-Phase 5 ★合流后整体审查：覆盖线上功能? 引入 bug?（STOP & CONFIRM）
+```text
+Phase 0 确认工作分支、主干分支、仓库状态，建立产物目录
+  ↓
+Phase 1 暂存未提交改动，记录回退锚点
+  ↓
+Phase 2 ★ 合流前逻辑冲突检查，写 LOGICAL_CONFLICTS.md，STOP & CONFIRM
+  ↓
+Phase 3 merge origin/<主干>
+  ↓
+Phase 4 如有行冲突，逐块解决并写 CONFLICT_RESOLUTION.md
+  ↓
+Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 ```
 
 ### Phase 0 — 确认工作分支与主干
 
-按 [@references/01-preflight.md](references/01-preflight.md) §0 执行：
+按 `references/01-preflight.md` §0 执行：
 
-- 确认 **工作分支**：默认 = 当前分支（`git branch --show-current`）；若用户另行指定则切换并复核。
-- 确认 **主干分支**：优先取远端默认分支（`origin/HEAD`），常见为 `main` / `master` / `develop`；多候选或不确定时向用户确认。
-- `git fetch` 拉取主干最新远端状态（不自动 pull 工作分支）。
-- 检查工作区状态、是否处于 rebase/merge 中途、是否 detached HEAD。
-- 在工作仓库根目录建立产物目录 `.qiqskills/<仓库名>-<分支名>/`，初始化 `ALIGN_PROGRESS.md`（基于 [@templates/ALIGN_PROGRESS.md](templates/ALIGN_PROGRESS.md)），记录合流前 HEAD（`git rev-parse HEAD`）作为**可回退锚点**。
+- 确认在 git 仓库内，且不处于 detached HEAD、rebase/merge 中途等异常状态。
+- 工作分支默认取当前分支；用户显式指定时再切换并复核。
+- 主干优先取远端默认分支；候选不唯一时询问用户。合流目标默认使用 `origin/<主干>`。
+- 执行 `git fetch origin <主干> --prune`，不对工作分支执行 `git pull`。
+- 计算 `merge-base`，记录合流前 `HEAD`、主干 commit 等锚点。
+- 在工作仓库根目录建立 `.qiqskills/<仓库名>-<分支名>/`，初始化 `ALIGN_PROGRESS.md`。
 
 ### Phase 1 — 暂存未提交改动
 
-按 [@references/01-preflight.md](references/01-preflight.md) §1 执行：
+按 `references/01-preflight.md` §1 执行：
 
-- 若工作区干净 → 记录"无需暂存"，跳过。
-- 若有未提交改动 → 默认用 `git stash push -u -m "qiq-alignmain:<仓库名>-<分支名>:<时间戳>"` 暂存（含未跟踪文件）；记录 stash 引用到 `ALIGN_PROGRESS.md`。用户偏好提交则改为新建一个 WIP commit，二选一须明确告知用户。
-- **绝不**用 `git checkout -- .` / `git reset --hard` 等丢弃工作区的方式"清理"。
+- 工作区干净：记录“无需暂存”。
+- 工作区不干净：默认 `git stash push -u -m "qiq-alignmain:<仓库名>-<分支名>:<时间戳>"`，并记录 stash 引用。
+- 用户偏好提交时可使用 WIP commit，但必须记录 commit hash 与后续恢复方式。
+- 禁止用 `reset --hard`、`checkout -- .`、`clean -fd` 等方式丢弃改动。
 
 ### Phase 2 — 合流前逻辑冲突检查（★STOP & CONFIRM）
 
-按 [@references/02-logical-conflict-check.md](references/02-logical-conflict-check.md) 执行，这是本 skill 的核心价值：
+按 `references/02-logical-conflict-check.md` 执行，这是本 skill 的核心价值：
 
-1. 用 `scripts/collect_diffs.sh origin/<主干>` 收集**主干侧改动**（merge-base→主干）与**分支侧改动**（merge-base→分支）。
-2. 按 reference 中的「7 类语义冲突清单」逐类排查：即使 git 不会在这些位置报行冲突，两边改动是否**逻辑上互相破坏**（如主干改了函数签名/删了字段/改了某配置语义/重构了模块，而分支基于旧形态新增了调用方或逻辑）。
-3. 产出 `.qiqskills/<仓库名>-<分支名>/LOGICAL_CONFLICTS.md`（基于 [@templates/LOGICAL_CONFLICTS.md](templates/LOGICAL_CONFLICTS.md)），逐条登记：冲突点、双方改动、风险等级、预案（合流后如何修正）。
-4. **STOP**：把逻辑冲突清单贴给用户确认，高风险项必须达成处理共识后才进入 Phase 3。
+1. 用 `scripts/collect_diffs.sh origin/<主干>` 或等价 git diff 收集双方从 `merge-base` 以来的改动。
+2. 重点检查双方共同改动文件，以及“主干改接口/契约，分支仍按旧形态消费”的跨文件关系。
+3. 按 7 类语义冲突逐类给结论：函数/方法签名、数据结构/字段、接口/契约、行为/默认值/常量、模块重构/搬迁/删除、共享资源/全局状态、依赖/构建/迁移。
+4. 写 `.qiqskills/<仓库名>-<分支名>/LOGICAL_CONFLICTS.md`：包含冲突点、双方改动、风险等级、合流后修正预案；未发现也要写明已检查范围。
+5. **STOP**：把清单交用户确认；高风险项必须达成处理共识后才进入 Phase 3。
 
 ### Phase 3 — merge 主干
 
-按 [@references/03-merge-and-resolve.md](references/03-merge-and-resolve.md) §3 执行：
+按 `references/03-merge-and-resolve.md` §3 执行：
 
-- 执行 `git merge <主干>`（默认产生 merge commit，保留合流历史；不擅自改用 rebase 改写工作分支历史，除非用户明确要求）。
-- 干净合入 → 进入 Phase 5（仍要做逻辑冲突预案的落地核对）。
-- 出现行冲突 → `git status` 收集全部冲突文件清单，进入 Phase 4。
+- 默认执行普通 merge：`git merge origin/<主干>`；不擅自改用 rebase。
+- up-to-date：说明无需合流，并仍确认前置检查结果。
+- 干净合入：进入 Phase 5，不能因 git 无冲突就跳过审查。
+- 有行冲突：先收集冲突文件和冲突块总数，作为 Phase 4 对账基线。
 
-### Phase 4 — 行冲突逐处解决与记录
+### Phase 4 — 行冲突逐块解决与记录
 
-按 [@references/03-merge-and-resolve.md](references/03-merge-and-resolve.md) §4 执行，对每个冲突块（hunk）：
+按 `references/03-merge-and-resolve.md` §4 执行：
 
-- 读懂 `<<<<<<< HEAD`（分支侧）/ `=======` / `>>>>>>> <主干>`（主干侧）双方意图。
-- 在 **§核心原则 4 的两条硬约束**下给出合并结果：既保留主干带来的有效逻辑、又保留分支已有逻辑、且完整实现分支本次目标。
-- 两条硬约束**无法同时满足**（例如主干删除了分支正要扩展的函数）→ 标记 `NEEDS-HUMAN`，**停下交人工确认**，不擅自取舍。
-- 逐块记录到 `.qiqskills/<仓库名>-<分支名>/CONFLICT_RESOLUTION.md`（基于 [@templates/CONFLICT_RESOLUTION.md](templates/CONFLICT_RESOLUTION.md)）：文件、冲突块、分支侧意图、主干侧意图、解决方案、是否满足两条硬约束、是否需人工。
-- 所有冲突解决并通过基本校验后 `git add` 并完成 merge commit；存在 `NEEDS-HUMAN` 未决项则**不提交**，先交人工。
+- 对每个冲突块读懂分支侧（`HEAD`）与主干侧（`origin/<主干>`）意图。
+- 首选融合双方；如主干重构了结构，应把分支意图适配到主干新结构，而不是回滚主干。
+- 若无法同时满足“不回滚已有逻辑”和“完整实现分支目标”，标记 `NEEDS-HUMAN`，停止并请用户裁决。
+- 逐块写入 `CONFLICT_RESOLUTION.md`：文件/块定位、双方意图、解决方案、是否满足两条硬约束、是否需人工。
+- 记录条数必须等于 Phase 3 统计的冲突块总数；所有 `NEEDS-HUMAN` 必须回填人工最终裁决后才能提交 merge。
 
 ### Phase 5 — 合流后整体审查（★STOP & CONFIRM）
 
-按 [@references/04-post-merge-review.md](references/04-post-merge-review.md) 执行：
+按 `references/04-post-merge-review.md` 执行：
 
-- **回归 Phase 2 预案**：逐条核对 `LOGICAL_CONFLICTS.md` 中每个逻辑冲突是否已在合流结果中正确消化（很多语义冲突 git 不报错，必须人工/搜索核对）。
-- **覆盖线上功能检查**：合流结果是否意外覆盖/回退了主干已有（即线上在跑）的功能或修复。
-- **引入 bug 检查**：合流是否引入新的不一致（调用方/被调方签名、字段、错误码、配置、依赖版本不匹配等）；尽量跑构建/测试做客观验证。
-- 产出 `.qiqskills/<仓库名>-<分支名>/POST_MERGE_REVIEW.md`（基于 [@templates/POST_MERGE_REVIEW.md](templates/POST_MERGE_REVIEW.md)）。
-- 提示用户：之前 stash 的改动是否需要 `git stash pop` 恢复（恢复后可能再次产生冲突，按 Phase 4 同样规则处理）。
-- **STOP**：把审查结论交用户确认；存在未消化的高风险项不得宣告"对齐完成"。
+- 逐条核对 `LOGICAL_CONFLICTS.md`：确认高/中风险语义冲突已在合流结果中消化。
+- 检查是否覆盖或回退了主干已有功能/修复，尤其是干净合入和偏向分支侧解决的位置。
+- 检查是否引入 bug：签名、字段、契约、配置、依赖、迁移等是否一致；尽量运行构建/测试/lint。
+- 处理 Phase 1 暂存：提示或执行 stash pop / WIP 恢复；若产生二次冲突，按 Phase 4 同样记录和对账。
+- 写 `POST_MERGE_REVIEW.md`：逻辑冲突消化结果、覆盖线上功能结论、构建/测试结果、stash/WIP 处理、遗留风险。
+- **STOP**：把审查结论交用户确认；存在未消化高风险项、未决人工项、构建/测试失败时，不宣告完成。
 
 ## 状态与产物目录约定
 
-**位置锚点（强制）**：所有读写以**用户工作仓库根目录**（调用 skill 时 shell 的 `pwd`）为基准，且必须是一个 git 仓库根。
+所有读写以用户工作仓库根目录为基准，产物固定写入：
 
-所有中间产物固定写入 `.qiqskills/<仓库名>-<分支名>/`。命名规则：`<仓库名>` 优先取 git remote 仓库名（无 remote 则取仓库根目录名），`<分支名>` 与 `<仓库名>` 中的 `/` 一律替换为 `-`（避免建出多级目录）。例：仓库 `qiq_alignmain` + 分支 `feature/login` → `.qiqskills/qiq_alignmain-feature-login/`。
-
-```
+```text
 .qiqskills/<仓库名>-<分支名>/
-├── ALIGN_PROGRESS.md         # 进度面板 + 可回退锚点（合流前 HEAD / stash 引用）
-├── LOGICAL_CONFLICTS.md      # Phase 2 逻辑冲突检查记录
-├── CONFLICT_RESOLUTION.md    # Phase 4 行冲突逐块解决记录
-└── POST_MERGE_REVIEW.md      # Phase 5 合流后整体审查记录
+├── ALIGN_PROGRESS.md
+├── LOGICAL_CONFLICTS.md
+├── CONFLICT_RESOLUTION.md
+└── POST_MERGE_REVIEW.md
 ```
 
-`.qiqskills/` 建议加入 `.gitignore`（除非用户希望把对齐记录一起提交）。
+命名规则：`<仓库名>` 优先取 git remote 仓库名，无 remote 时取仓库根目录名；`<仓库名>` 与 `<分支名>` 中的 `/` 替换为 `-`。`.qiqskills/` 建议加入 `.gitignore`，除非用户希望提交审计记录。
 
-## 红线（Hard Rules — 违反即立即停止并向用户报告）
+## 红线（违反即停止）
 
-- ❌ **反向污染主干**：向主干 push、把工作分支 merge/rebase 进主干，或改写主干历史。
-- ❌ **丢弃用户改动**：用 `reset --hard`、`checkout -- .`、`clean -fd` 等丢弃未提交改动；未提交改动一律走 Phase 1 暂存。
-- ❌ **跳过逻辑冲突检查**：未产出并确认 `LOGICAL_CONFLICTS.md` 就直接 merge。
-- ❌ **擅自二选一**：行冲突在两条硬约束下不可兼得时，AI 自行回滚一方逻辑而不交人工确认。
-- ❌ **借合流搞重构**：在冲突解决/合流过程中改命名、删功能、做未要求的"优化"。
-- ❌ **带未决项收尾**：存在 `NEEDS-HUMAN` 冲突或未消化高风险逻辑冲突时，提交 merge 或宣告"对齐完成"。
-- ❌ **口头解决不留痕**：任何冲突（逻辑/行/二次）只在对话里解决而不写入对应记录文件；或记录条数与 git 报告的冲突块数对不上；或 `NEEDS-HUMAN` 交人工后不回填最终裁决。
-- ❌ **无回退锚点动手**：未先记录合流前 HEAD / stash 引用就执行 merge。
+- ❌ 向主干 push、把工作分支 merge/rebase 进主干、改写主干历史。
+- ❌ 未记录回退锚点就执行 merge / stash pop / reset。
+- ❌ 用 `reset --hard`、`checkout -- .`、`clean -fd` 等丢弃用户改动。
+- ❌ 跳过 Phase 2 逻辑冲突检查直接 merge。
+- ❌ 行冲突无法满足两条硬约束时擅自二选一。
+- ❌ 用整文件 `--ours` / `--theirs` 图省事；确需使用必须逐块说明并记录。
+- ❌ 借合流做无关重构、改名、删功能或顺手优化。
+- ❌ 存在 `NEEDS-HUMAN`、未消化高风险项、构建/测试失败时提交或宣告完成。
+- ❌ 只在对话中解决冲突而不落盘，或冲突记录无法与 git 冲突块数对账。
 
-## Pitfalls
+## Verification（交付前核对）
 
-- **stash 后忘记 pop** → Phase 5 必须提示用户处理被暂存的改动；pop 可能再次产生冲突。
-- **把 merge 改成 rebase 改写分支历史** → 默认 merge；rebase 需用户明确同意，且仍只动工作分支。
-- **跨多分支同时对齐** → 一次会话只对齐一个工作分支；多分支分别启动。
-- **合流后不验证就收尾** → 至少跑构建/相关测试，把"引入 bug"从主观判断变成客观结论。
-
-## Verification（交付前逐项核对）
-
-- [ ] **Phase 0**：工作分支、主干分支已确认；`git fetch` 已执行；合流前 HEAD 已记录为回退锚点。
-- [ ] **Phase 1**：未提交改动已安全暂存（stash 引用或 WIP commit 已记录），无任何丢弃式清理。
-- [ ] **Phase 2**：`LOGICAL_CONFLICTS.md` 已产出，7 类语义冲突已逐类排查，已交用户确认。
-- [ ] **Phase 3**：merge 已执行，行冲突文件清单已完整收集。
-- [ ] **Phase 4**：`CONFLICT_RESOLUTION.md` 逐块记录；**记录条数 = git 报告的冲突块数（对账一致）**；每块标注是否满足两条硬约束；所有 `NEEDS-HUMAN` 项均已交人工**且回填了最终裁决（决定/拍板人/依据）**，无擅自二选一。
-- [ ] **可审计性**：四个 commit 锚点（merge-base / 合流前 HEAD / 主干 commit / merge commit）已记录；逻辑冲突的用户确认结论、行冲突与二次冲突的解决方法均可逐条追溯。
-- [ ] **Phase 5**：`POST_MERGE_REVIEW.md` 已产出；Phase 2 逻辑冲突预案逐条核对消化；覆盖线上功能/引入 bug 两项均有结论；构建/测试结果已登记；stash 恢复事项已提示；已交用户确认。
+- [ ] 工作分支、主干分支、`merge-base`、合流前 `HEAD`、主干 commit、merge commit（如有）已记录。
+- [ ] 未提交改动已安全暂存，或确认工作区干净。
+- [ ] `LOGICAL_CONFLICTS.md` 已产出；7 类语义冲突已逐类排查并交用户确认。
+- [ ] merge 结果已判定；如有行冲突，冲突文件与冲突块总数已在解决前存档。
+- [ ] `CONFLICT_RESOLUTION.md` 逐块记录；记录条数与冲突块数一致；所有 `NEEDS-HUMAN` 已回填裁决。
+- [ ] `POST_MERGE_REVIEW.md` 已产出；逻辑冲突预案、覆盖线上功能、引入 bug、构建/测试、stash/WIP 恢复均有结论。

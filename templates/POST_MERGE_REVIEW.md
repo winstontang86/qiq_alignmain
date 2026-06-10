@@ -11,7 +11,7 @@
 
 ## 2. 覆盖线上功能检查
 
-- 检查方式：对照 `git diff <merge-base> origin/<主干>` 与 `git diff origin/<主干>...HEAD`。
+- 检查方式：对照 `git diff <merge-base> origin/<主干>` 与 `git diff origin/<主干> HEAD`。
 - 结论：✅ 未覆盖主干功能 / ⚠️ 以下点需确认：
   - （列出疑似把主干功能改回旧样子的位置）
 

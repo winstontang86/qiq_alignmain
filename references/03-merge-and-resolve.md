@@ -21,10 +21,11 @@ git merge origin/<主干>
 
 - **Already up to date** → 主干无新东西，确认 merge-base 是否就是主干 HEAD；告知用户无需对齐。
 - **干净合入（无 CONFLICT 提示）** → 跳过 Phase 4，但**仍需进入 Phase 5**，因为干净合入恰恰是语义冲突的高发场景（git 没报 ≠ 没问题）。
-- **出现 `CONFLICT`** → 收集全部冲突清单，进入 Phase 4：
+- **出现 `CONFLICT`** → 收集全部冲突清单**并先统计冲突块总数作为对账基线**（解决前必须先存档，解决后标记会消失，无法补算），进入 Phase 4：
   ```bash
   git status                                  # 看 "Unmerged paths"
-  git diff --name-only --diff-filter=U         # 仅列出冲突文件
+  git diff --name-only --diff-filter=U         # 冲突文件清单
+  grep -rc '^<<<<<<< ' . | grep -v ':0'        # 各文件冲突块数（解决前快照，记入审计对账基线 N）
   ```
 
 ### 3.3 中途回退手段（仅用户要求放弃时）
@@ -78,26 +79,36 @@ git diff <merge-base> origin/<主干> -- <file>
 - ❌ 借冲突解决删除"看起来没用"的代码、改命名、做未要求的优化。
 - ❌ 把 `NEEDS-HUMAN` 项自行拍板后继续提交。
 
-### 4.5 逐块记录
+### 4.5 逐块记录（可审计）
 
-每个冲突块在 `.qiqskills/<仓库名>-<分支名>/CONFLICT_RESOLUTION.md` 登记（基于 template）：文件、冲突块定位、分支侧意图、主干侧意图、采用的解决策略、解决后代码摘要、是否满足约束①、是否满足约束②、是否 `NEEDS-HUMAN`。
+每个冲突块在 `.qiqskills/<仓库名>-<分支名>/CONFLICT_RESOLUTION.md` 登记（基于 template），字段：解决前冲突原文/定位、文件与块定位、分支侧意图、主干侧意图、采用的解决策略、解决后代码摘要、是否满足约束①、是否满足约束②、是否 `NEEDS-HUMAN`。
+
+审计要求（强制）：
+
+- **不漏记**：记录条数必须等于 §3.2 存档的冲突块总数 `N`；填好 template 的「冲突块对账」表，`N == M` 才算完整。
+- **人工裁决回填**：每个 `NEEDS-HUMAN` 块得到人工决定后，必须把「最终决定 / 拍板人 / 时间 / 依据」回填到该块的"人工裁决结论"，形成闭环；不得只在对话里口头敲定。
+- **原文留痕**：解决前先把冲突块原文（或精确文件:行定位）记入，确保事后能复现"当时的冲突态"。
 
 ### 4.6 收尾
 
 - 解决完一处即移除冲突标记；全部解决后做基本校验（语法/构建/受影响测试）。
-- 无 `NEEDS-HUMAN` 未决项时：
+- 提交前完成审计对账：`N == M`、所有 `NEEDS-HUMAN` 已回填裁决、无残留未决项。
+- 满足后：
   ```bash
   git add <已解决文件...>
   git diff --name-only --diff-filter=U     # 必须为空才可提交
   git commit                                # 完成 merge commit（保留默认 merge message 或补充说明）
+  git rev-parse HEAD                        # merge commit hash，回填 CONFLICT_RESOLUTION.md 审计锚点表
   ```
-- 存在 `NEEDS-HUMAN` → **不提交**，把待裁决项交用户；得到决定后再回到本节继续。
+- 存在 `NEEDS-HUMAN` 或对账不一致 → **不提交**，把待裁决/待补记项交用户；处理后再回到本节继续。
 
 ---
 
 ## 完成本阶段的判定
 
 - [ ] merge 已执行，结果（up-to-date / 干净 / 冲突）已判定。
-- [ ] 每个冲突块都已记录，且标注是否满足两条硬约束。
+- [ ] 冲突块总数 `N` 已在解决前存档；记录条数 `M` 与之对账一致（`N == M`）。
+- [ ] 每个冲突块都已记录原文/定位，且标注是否满足两条硬约束。
 - [ ] 所有 `git checkout --ours/--theirs` 整文件取舍（如有）均有逐块理由。
-- [ ] 无 `NEEDS-HUMAN` 残留才提交 merge；否则已交人工。
+- [ ] 所有 `NEEDS-HUMAN` 已回填人工裁决结论；无残留才提交 merge；否则已交人工。
+- [ ] merge commit hash 已回填审计锚点表。

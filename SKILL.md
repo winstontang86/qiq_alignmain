@@ -63,7 +63,7 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 - 主干优先取远端默认分支；候选不唯一时询问用户。合流目标默认使用 `origin/<主干>`。
 - 执行 `git fetch origin <主干> --prune`，不对工作分支执行 `git pull`。
 - 计算 `merge-base`，记录合流前 `HEAD`、主干 commit 等锚点。
-- 在工作仓库根目录建立 `.qiqskills/<仓库名>-<分支名>/`，初始化 `ALIGN_PROGRESS.md`。
+- 在工作仓库根目录建立 `.qiqskills/<仓库名>-<分支名>/`；若已有历史中间产物，先按 `references/01-preflight.md` §0.6 移入 `archive/<YYYYMMDD-HHMMSS>/`，**严禁直接覆盖**，再初始化新的 `ALIGN_PROGRESS.md` 并回填历史归档目录。
 
 ### Phase 1 — 暂存未提交改动
 
@@ -123,10 +123,18 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 ├── ALIGN_PROGRESS.md
 ├── LOGICAL_CONFLICTS.md
 ├── CONFLICT_RESOLUTION.md
-└── POST_MERGE_REVIEW.md
+├── POST_MERGE_REVIEW.md
+└── archive/
+    └── <YYYYMMDD-HHMMSS>/   # 同分支前次执行的旧产物，按本次启动时间归档
+        ├── ALIGN_PROGRESS.md
+        ├── LOGICAL_CONFLICTS.md
+        ├── CONFLICT_RESOLUTION.md
+        └── POST_MERGE_REVIEW.md
 ```
 
 命名规则：`<仓库名>` 优先取 git remote 仓库名，无 remote 时取仓库根目录名；`<仓库名>` 与 `<分支名>` 中的 `/` 替换为 `-`。`.qiqskills/` 建议加入 `.gitignore`，除非用户希望提交审计记录。
+
+历史归档约定：每次重新执行该 skill，若 `.qiqskills/<仓库名>-<分支名>/` 下已存在上述 4 个标准中间产物文件，必须先整体移入 `archive/<本次启动时间>/` 子目录，再写新文件；既存的 `archive/` 子目录原样保留，不二次搬移、不删除，确保跨次执行的全量审计可追溯。
 
 ## 红线（违反即停止）
 
@@ -139,10 +147,12 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 - ❌ 借合流做无关重构、改名、删功能或顺手优化。
 - ❌ 存在 `NEEDS-HUMAN`、未消化高风险项、构建/测试失败时提交或宣告完成。
 - ❌ 只在对话中解决冲突而不落盘，或冲突记录无法与 git 冲突块数对账。
+- ❌ 在残留历史中间产物的目录下直接写新产物，或归档失败后仍继续推进。
 
 ## Verification（交付前核对）
 
 - [ ] 工作分支、主干分支、`merge-base`、合流前 `HEAD`、主干 commit、merge commit（如有）已记录。
+- [ ] 已存在的历史中间产物已移入 `archive/<时间戳>/`，新产物未覆盖历史；`ALIGN_PROGRESS.md` 已回填本次归档目录或填 `无`。
 - [ ] 未提交改动已安全暂存，或确认工作区干净。
 - [ ] `LOGICAL_CONFLICTS.md` 已产出；7 类语义冲突已逐类排查并交用户确认。
 - [ ] merge 结果已判定；如有行冲突，冲突文件与冲突块总数已在解决前存档。

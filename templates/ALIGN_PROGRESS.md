@@ -10,6 +10,7 @@
 | 工作分支 | `<分支名>` |
 | 主干分支 | `origin/<主干>` |
 | 产物目录 | `.qiqskills/<仓库名>-<分支名>/` |
+| 历史归档目录 | `.qiqskills/<仓库名>-<分支名>/archive/<YYYYMMDD-HHMMSS>/` 或 `无` |
 | merge-base | `<merge-base commit>` |
 | 启动时间 | `<YYYYMMDD-HHMMSS>` |
 

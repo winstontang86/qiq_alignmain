@@ -61,6 +61,39 @@ git merge-base HEAD origin/<主干>      # 共同祖先 commit，记为 <merge-b
   ```
 - 回退锚点的意义：万一合流出错，可 `git merge --abort`（merge 中途）或 `git reset --hard <合流前HEAD>`（已生成 merge commit 且确认要放弃）回到原点。**这些回退动作只在用户明确要求放弃合流时执行。**
 
+### 0.6 历史中间产物归档（首次写新产物前）
+
+`.qiqskills/<仓库名>-<分支名>/` 可能因为同分支前一次对齐而残留旧产物（`ALIGN_PROGRESS.md` / `LOGICAL_CONFLICTS.md` / `CONFLICT_RESOLUTION.md` / `POST_MERGE_REVIEW.md`）。**新一次执行严禁直接覆盖**，必须先把历史产物搬入归档子目录，再写新产物。
+
+判定与动作：
+
+```bash
+WORK_DIR=".qiqskills/${REPO}-${BR}"
+TS="$(date +%Y%m%d-%H%M%S)"
+ARCHIVE_DIR="${WORK_DIR}/archive/${TS}"
+
+shopt -s nullglob
+old=( "$WORK_DIR"/ALIGN_PROGRESS.md \
+      "$WORK_DIR"/LOGICAL_CONFLICTS.md \
+      "$WORK_DIR"/CONFLICT_RESOLUTION.md \
+      "$WORK_DIR"/POST_MERGE_REVIEW.md )
+shopt -u nullglob
+
+if [ ${#old[@]} -gt 0 ]; then
+  mkdir -p "$ARCHIVE_DIR"
+  mv "${old[@]}" "$ARCHIVE_DIR"/
+  echo "归档历史中间产物 → $ARCHIVE_DIR"
+fi
+```
+
+规则：
+
+- 归档目录命名固定为 `archive/<YYYYMMDD-HHMMSS>/`，时间戳取本次执行启动时间，与 `ALIGN_PROGRESS.md` 的"启动时间"一致，方便回查。
+- 仅归档 4 个标准中间产物文件；`archive/` 子目录本身、`.gitignore` 等其他文件原样保留。
+- 已存在的 `archive/` 历史目录**不要清理、不要再次搬动**，保留逐次执行的全量历史。
+- 归档完成后才生成新的 `ALIGN_PROGRESS.md`；并在新文件的"历史归档目录"字段回填本次 `archive/<时间戳>/` 路径，未发生归档则填 `无`。
+- 若 `mv` 失败（权限/磁盘等），**停止**并向用户报告，不得在残留旧产物的目录下继续写新文件。
+
 ---
 
 ## §1 暂存未提交改动
@@ -108,4 +141,5 @@ git commit -m "WIP: qiq-alignmain 合流前暂存（合流后可 reset 回退）
 - [ ] 确认在 git 仓库内，工作分支与主干分支已明确。
 - [ ] `git fetch` 已执行，merge-base 已计算。
 - [ ] 产物目录已建，合流前 HEAD 已记录为回退锚点。
+- [ ] 旧的中间产物（如有）已搬入 `archive/<时间戳>/`，新产物未覆盖历史。
 - [ ] 未提交改动已安全暂存（stash 引用或 WIP commit 已记录），或确认工作区干净。

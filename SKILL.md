@@ -78,12 +78,13 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 
 按 `references/02-logical-conflict-check.md` 执行，这是本 skill 的核心价值：
 
-1. 用 `scripts/collect_diffs.sh origin/<主干>` 或等价 git diff 收集双方从 `merge-base` 以来的改动。
-2. 重点检查双方共同改动文件，以及“主干改接口/契约，分支仍按旧形态消费”的跨文件关系。
-3. 按 7 类语义冲突逐类给结论：函数/方法签名、数据结构/字段、接口/契约、行为/默认值/常量、模块重构/搬迁/删除、共享资源/全局状态、依赖/构建/迁移。
-4. 写 `.qiqskills/<仓库名>-<分支名>/LOGICAL_CONFLICTS.md`：包含冲突点、双方改动、风险等级、合流后修正预案；未发现也要写明已检查范围。
-5. **STOP**：把清单交用户确认；高风险项必须达成处理共识后才进入 Phase 3。
-
+1. 用 `scripts/collect_diffs.sh origin/<主干>` 或等价 git diff 收集双方从 `merge-base` 以来的改动，**脚本自动输出三类文件**：
+   - **C 类：双方共同触碰文件**（深度检查，即使无 git 行冲突也要逐个精读 diff）。
+   - **B 类：仅主干修改文件**（快速放过，只检查分支侧是否有跨文件依赖；有依赖则升级为 C 类）。
+   - **A 类：仅分支修改文件**（直接放过，分支自身改动）。
+2. 对 C 类文件按 7 类语义冲突逐类给结论：函数/方法签名、数据结构/字段、接口/契约、行为/默认值/常量、模块重构/搬迁/删除、共享资源/全局状态、依赖/构建/迁移。**无论 git 是否有行冲突，C 类文件都必须深度检查逻辑冲突与覆盖。**
+3. 写 `.qiqskills/<仓库名>-<分支名>/LOGICAL_CONFLICTS.md`：包含 A/B 类放过记录、C 类冲突点、双方改动、风险等级、合流后修正预案；未发现也要写明已检查范围和放过依据。
+4. **STOP**：把清单交用户确认；高风险项必须达成处理共识后才进入 Phase 3。
 ### Phase 3 — merge 主干
 
 按 `references/03-merge-and-resolve.md` §3 执行：
@@ -98,11 +99,13 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 按 `references/03-merge-and-resolve.md` §4 执行：
 
 - 对每个冲突块读懂分支侧（`HEAD`）与主干侧（`origin/<主干>`）意图。
-- 首选融合双方；如主干重构了结构，应把分支意图适配到主干新结构，而不是回滚主干。
-- 若无法同时满足“不回滚已有逻辑”和“完整实现分支目标”，标记 `NEEDS-HUMAN`，停止并请用户裁决。
-- 逐块写入 `CONFLICT_RESOLUTION.md`：文件/块定位、双方意图、解决方案、是否满足两条硬约束、是否需人工。
+- **解决方案三级优先级**：
+  1. **融合双方（AI 可自行解决）**：两段修改作用于不同区域/不同关注点，合并后无逻辑冲突、无变量覆盖、无执行流分歧 → 直接融合，自行完成。
+  2. **以新形态承载旧意图（AI 可自行解决）**：主干重构了结构，分支逻辑适配到主干新结构上重写，适配逻辑明确无二义 → 自行完成。
+  3. **NEEDS-HUMAN（必须交人工）**：双方逻辑真正互斥、AI 不确定如何安全融合、合并后可能引入运行时 bug、存在二义性 → 标记 `NEEDS-HUMAN`，停止并请用户裁决。
+- 若无法同时满足"不回滚已有逻辑"和"完整实现分支目标"，标记 `NEEDS-HUMAN`，停止并请用户裁决。
+- 逐块写入 `CONFLICT_RESOLUTION.md`：文件/块定位、双方意图、解决方案、是否满足两条硬约束、是否需人工、AI 自行解决或 `NEEDS-HUMAN`。
 - 记录条数必须等于 Phase 3 统计的冲突块总数；所有 `NEEDS-HUMAN` 必须回填人工最终裁决后才能提交 merge。
-
 ### Phase 5 — 合流后整体审查（★STOP & CONFIRM）
 
 按 `references/04-post-merge-review.md` 执行：
@@ -154,7 +157,7 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 - [ ] 工作分支、主干分支、`merge-base`、合流前 `HEAD`、主干 commit、merge commit（如有）已记录。
 - [ ] 已存在的历史中间产物已移入 `archive/<时间戳>/`，新产物未覆盖历史；`ALIGN_PROGRESS.md` 已回填本次归档目录或填 `无`。
 - [ ] 未提交改动已安全暂存，或确认工作区干净。
-- [ ] `LOGICAL_CONFLICTS.md` 已产出；7 类语义冲突已逐类排查并交用户确认。
+- [ ] `LOGICAL_CONFLICTS.md` 已产出；A/B/C 三类文件均已标注；C 类文件已按 7 类语义冲突逐类排查并交用户确认。
 - [ ] merge 结果已判定；如有行冲突，冲突文件与冲突块总数已在解决前存档。
 - [ ] `CONFLICT_RESOLUTION.md` 逐块记录；记录条数与冲突块数一致；所有 `NEEDS-HUMAN` 已回填裁决。
 - [ ] `POST_MERGE_REVIEW.md` 已产出；逻辑冲突预案、覆盖线上功能、引入 bug、构建/测试、stash/WIP 恢复均有结论。

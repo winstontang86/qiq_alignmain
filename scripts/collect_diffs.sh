@@ -13,6 +13,8 @@
 #   2. 分支侧改动概览     merge_base -> HEAD
 #   3. 双方共同触碰的文件（行冲突 + 语义冲突高发交集）
 #   4. 主干侧的 rename/delete 文件（模块搬迁/删除类语义冲突线索）
+#   5. 仅主干侧修改的文件（快速放过，仅需检查跨文件依赖）
+#   6. 仅分支侧修改的文件（快速放过，分支自身改动）
 #
 # 设计为安全只读：仅调用 git diff / git merge-base 等查询命令。
 
@@ -82,7 +84,31 @@ echo "----- [4] 主干侧 rename/delete 文件（模块搬迁/删除类冲突线
 git --no-pager diff --name-status --diff-filter=RD "$MB" "$TRUNK" || true
 
 echo ""
+echo "----- [5] 仅主干侧修改的文件（快速放过，仅需检查分支侧是否有跨文件依赖）-----"
+TRUNK_ONLY="$(comm -23 \
+  <(git diff --name-only "$MB" "$TRUNK" | sort -u) \
+  <(git diff --name-only "$MB" "HEAD" | sort -u) || true)"
+if [ -n "$TRUNK_ONLY" ]; then
+  echo "$TRUNK_ONLY"
+else
+  echo "(无)"
+fi
+
+echo ""
+echo "----- [6] 仅分支侧修改的文件（快速放过，分支自身改动，不纳入逻辑冲突检查）-----"
+BRANCH_ONLY="$(comm -13 \
+  <(git diff --name-only "$MB" "$TRUNK" | sort -u) \
+  <(git diff --name-only "$MB" "HEAD" | sort -u) || true)"
+if [ -n "$BRANCH_ONLY" ]; then
+  echo "$BRANCH_ONLY"
+else
+  echo "(无)"
+fi
+
+echo ""
 echo "================================================================"
-echo " 下一步：对 [3] 逐文件精读 git diff；对主干侧变更的函数/字段/契约，"
-echo "         在分支侧 grep 其调用/引用点，按 7 类语义冲突清单逐类登记。"
+echo " 下一步："
+echo "   [3] 双方共同触碰文件 → 逐文件精读 diff，按 7 类语义冲突清单逐类登记。"
+echo "   [5] 仅主干侧修改文件 → 快速放过（除非分支侧存在跨文件依赖，如接口/契约消费方）。"
+echo "   [6] 仅分支侧修改文件 → 直接放过，不纳入逻辑冲突检查。"
 echo "================================================================"

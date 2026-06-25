@@ -1,7 +1,7 @@
 ---
 name: qiq-alignmain
 description: 把主干（main/master/develop）的最新修改安全对齐（合流）到当前工作分支。覆盖确认分支、暂存未提交改动、合流前逻辑冲突检查、merge 主干、行冲突解决、合流后整体审查。重点检测 git 不报行冲突但逻辑互相破坏的语义冲突，并在“不回滚已有逻辑”“完整实现分支目标”两条硬约束下解决冲突，不可兼得时停下交人工确认。触发：把 main 对齐到分支 / 合流主干 / merge main 到当前分支 / align main / 同步主干 / 解决主干合流冲突。
-version: 0.1.0
+version: 0.2.0
 ---
 
 # qiq-alignmain — 把主干修改安全对齐到工作分支
@@ -31,7 +31,7 @@ version: 0.1.0
 
 | 阶段 | 目标 | 必读 reference | 必读 template |
 |---|---|---|---|
-| Phase 0/1 | 确认分支、fetch 主干、安全暂存 | `references/01-preflight.md` | `templates/ALIGN_PROGRESS.md` |
+| Phase 0/1 | 确认分支、fetch 主干、安全暂存、同步当前分支远程更新 | `references/01-preflight.md` | `templates/ALIGN_PROGRESS.md` |
 | Phase 2 ★ | 合流前逻辑冲突检查，产出清单并确认 | `references/02-logical-conflict-check.md` | `templates/LOGICAL_CONFLICTS.md` |
 | Phase 3/4 | merge 主干；逐块解决并记录行冲突 | `references/03-merge-and-resolve.md` | `templates/CONFLICT_RESOLUTION.md` |
 | Phase 5 ★ | 合流后审查：覆盖线上功能、引入 bug、stash/WIP 恢复 | `references/04-post-merge-review.md` | `templates/POST_MERGE_REVIEW.md` |
@@ -65,15 +65,15 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 - 计算 `merge-base`，记录合流前 `HEAD`、主干 commit 等锚点。
 - 在工作仓库根目录建立 `.qiqskills/<仓库名>-<分支名>/`；若已有历史中间产物，先按 `references/01-preflight.md` §0.6 移入 `archive/<YYYYMMDD-HHMMSS>/`，**严禁直接覆盖**，再初始化新的 `ALIGN_PROGRESS.md` 并回填历史归档目录。
 
-### Phase 1 — 暂存未提交改动
+### Phase 1 — 暂存未提交改动并同步远程
 
 按 `references/01-preflight.md` §1 执行：
 
-- 工作区干净：记录“无需暂存”。
+- 工作区干净：记录"无需暂存"。
 - 工作区不干净：默认 `git stash push -u -m "qiq-alignmain:<仓库名>-<分支名>:<时间戳>"`，并记录 stash 引用。
 - 用户偏好提交时可使用 WIP commit，但必须记录 commit hash 与后续恢复方式。
 - 禁止用 `reset --hard`、`checkout -- .`、`clean -fd` 等方式丢弃改动。
-
+- **暂存完成后**，检查当前工作分支的远程是否有更新（`git fetch origin <当前分支>`），若有新的远程 commit，先执行 `git merge origin/<当前分支>` 将远程更新合入当前分支，处理可能的冲突后再进入 Phase 2。
 ### Phase 2 — 合流前逻辑冲突检查（★STOP & CONFIRM）
 
 按 `references/02-logical-conflict-check.md` 执行，这是本 skill 的核心价值：
@@ -157,6 +157,7 @@ Phase 5 ★ 合流后整体审查，写 POST_MERGE_REVIEW.md，STOP & CONFIRM
 - [ ] 工作分支、主干分支、`merge-base`、合流前 `HEAD`、主干 commit、merge commit（如有）已记录。
 - [ ] 已存在的历史中间产物已移入 `archive/<时间戳>/`，新产物未覆盖历史；`ALIGN_PROGRESS.md` 已回填本次归档目录或填 `无`。
 - [ ] 未提交改动已安全暂存，或确认工作区干净。
+- [ ] 当前分支远程更新已检查并处理（无更新/已合入/冲突已解决）。
 - [ ] `LOGICAL_CONFLICTS.md` 已产出；A/B/C 三类文件均已标注；C 类文件已按 7 类语义冲突逐类排查并交用户确认。
 - [ ] merge 结果已判定；如有行冲突，冲突文件与冲突块总数已在解决前存档。
 - [ ] `CONFLICT_RESOLUTION.md` 逐块记录；记录条数与冲突块数一致；所有 `NEEDS-HUMAN` 已回填裁决。

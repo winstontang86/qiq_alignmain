@@ -129,7 +129,41 @@ git commit -m "WIP: qiq-alignmain 合流前暂存（合流后可 reset 回退）
 - 记录该 WIP commit 的 hash；Phase 5 可提示用户用 `git reset --soft HEAD~1` 把 WIP 改动还原为工作区改动。
 - 二选一必须**明确告知用户采用了哪种**，并写入进度面板。
 
-### 1.4 禁止动作
+### 1.4 同步当前分支远程更新（合入主干前）
+
+在暂存完成后、进入 Phase 2 前，必须检查当前工作分支的远程是否有新内容。若远端已被其他人推送了新的 commit，直接 `merge origin/<主干>` 会导致不必要的冲突或逻辑混乱。应先同步当前分支的远程更新。
+
+```bash
+git fetch origin <当前分支> --prune         # 拉取当前分支远程的最新状态
+
+# 检查本地是否落后于远程
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse origin/<当前分支>)
+if [ "$LOCAL" != "$REMOTE" ]; then
+  echo "当前分支远程有更新，先合入远程内容"
+  git merge origin/<当前分支> --no-edit      # 将远程更新合入本地
+  # 如有冲突，按 §1.4.1 处理
+fi
+```
+
+- 若 `LOCAL == REMOTE`（本地已是最新），记录"当前分支远程无更新"，直接进入 Phase 2。
+- 若远程有新 commit 且合并无冲突，记录 merge commit 或 fast-forward 结果，进入 Phase 2。
+- 若合并产生行冲突，按以下规则处理。
+
+#### 1.4.1 远程同步冲突处理
+
+远程同步冲突是本分支与远程同一分支之间的冲突，通常是多人协作导致。处理优先级：
+
+1. **AI 可自行解决**：冲突内容明确、双方修改互不干扰，融合后写入 `ALIGN_PROGRESS.md` 记录。
+2. **NEEDS-HUMAN**：冲突涉及相同区域、无法判断取舍、存在逻辑互斥 → 标记 `NEEDS-HUMAN`，**停止**并向用户说明冲突内容，等待裁决后再继续。
+
+- 冲突记录必须写入 `ALIGN_PROGRESS.md` 的 "远程同步" 章节，包含冲突文件、冲突块数、解决方式。
+- 远程同步冲突解决后，确认 `git status` 干净再进入 Phase 2。
+- **绝不**在远程同步冲突未解决的情况下继续合入主干。
+
+---
+
+### 1.5 禁止动作
 
 - ❌ `git reset --hard` / `git checkout -- .` / `git clean -fd` 等任何会**丢弃**未提交改动的命令。
 - ❌ 在未记录回退锚点 / stash 引用前就推进到 merge。
@@ -143,3 +177,4 @@ git commit -m "WIP: qiq-alignmain 合流前暂存（合流后可 reset 回退）
 - [ ] 产物目录已建，合流前 HEAD 已记录为回退锚点。
 - [ ] 旧的中间产物（如有）已搬入 `archive/<时间戳>/`，新产物未覆盖历史。
 - [ ] 未提交改动已安全暂存（stash 引用或 WIP commit 已记录），或确认工作区干净。
+- [ ] 当前分支远程更新已检查：若无更新则记录"无更新"；若有更新已合入，冲突已解决并记录。

@@ -50,7 +50,7 @@ git merge-base HEAD origin/<主干>      # 共同祖先 commit，记为 <merge-b
 - 产物目录名为 `<仓库名>-<分支名>`，其中：
   - `<仓库名>` 取工作仓库名：优先用 git remote 的仓库名（`basename -s .git "$(git remote get-url origin)"`），无 remote 时回落到仓库根目录名（`basename "$(git rev-parse --show-toplevel)"`）。
   - `<分支名>` 中的 `/`（如 `feature/x`）替换为 `-`（→ `feature-x`）；同理 `<仓库名>` 内若含 `/` 也替换为 `-`，避免建出多级目录。
-  - 示例：仓库 `qiq_alignmain` + 分支 `feature/login` → `.qiqskills/qiq_alignmain-feature-login/`。
+  - 示例：仓库 `qiq-alignmain` + 分支 `feature/login` → `.qiqskills/qiq-alignmain-feature-login/`。
 - 建目录并初始化进度面板（基于 `templates/ALIGN_PROGRESS.md`）：
   ```bash
   REPO="$(basename -s .git "$(git remote get-url origin 2>/dev/null)" 2>/dev/null)"
